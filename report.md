@@ -11,20 +11,9 @@ Firecracker was introduced to specifically address these challenges. Firecracker
 
 The diagram below describes the previous architecture that supported AWS lambda. Understanding the limitations and tradeoffs in this design will help provide a good inclination as to why Firecracker was deemed necessary and ultimately developed.
 
-```mermaid
-graph LR
-F{Lambda} --> VM1((Virtual Machine))
-VM1 -- Client 1 --> A1[container]
-VM1 -- Client 1 --> A2[container]
-VM1 -- Client 1 --> A3[container]
+![image](https://user-images.githubusercontent.com/54540257/113560094-2b5fc480-959e-11eb-9a37-10362f12a3da.png)
 
-F --> VM2((Virtual Machine))
-VM2 -- Client 2 --> B1[container]
-VM2 -- Client 2 --> B2[container]
-VM2 -- Client 2 --> B3[container] 
-
-```
-**Linux containers** provided isolation between multiple functions. 
+**Linux containers** provided isolation between multiple functions.  
 **Virtual machines** provided isolation between multiple clients.
 
 This system provided **benefits** of:
@@ -60,5 +49,5 @@ Firecracker is more suited to be integrated with applications that has an event 
 
 # 	:scroll: References
 
-[1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf
+[1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf  
 [2] https://aws.amazon.com/lambda/
