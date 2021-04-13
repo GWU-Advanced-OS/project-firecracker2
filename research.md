@@ -29,23 +29,23 @@
 * Firecracker aims to provide safe and efficient machines and services that allow multiple clients to run on the same device isolated from each other.
 
 * Features [2]
-(1) Firecracker can safely run workloads from different customers on the same machine.
-(2) Customers can create microVMs with any combination of vCPU and memory to match their application requirements.
-(3) Firecracker microVMs can oversubscribe host CPU and memory. The degree of oversubscription is controlled by customers, who may factor in workload correlation and load in order to ensure smooth host system operation.
-(4) With a microVM configured with a minimal Linux kernel, single-core CPU, and 128 MiB of RAM, Firecracker supports a steady mutation rate of 5 microVMs per host core per second 
-(e.g., one can create 180 microVMs per second on a host with 36 physical cores).
-(5) The number of Firecracker microVMs running simultaneously on a host is limited only by the availability of hardware resources.
-(6) Each microVM exposes a host-facing API (REST) via an in-process HTTP server.
-(7) Each microVM provides guest-facing access to host-configured metadata via the /mmds API.  
+* (1) Firecracker can safely run workloads from different customers on the same machine.
+* (2) Customers can create microVMs with any combination of vCPU and memory to match their application requirements.
+* (3) Firecracker microVMs can oversubscribe host CPU and memory. The degree of oversubscription is controlled by customers, who may factor in workload correlation and load in order to ensure smooth host system operation.
+* (4) With a microVM configured with a minimal Linux kernel, single-core CPU, and 128 MiB of RAM, Firecracker supports a steady mutation rate of 5 microVMs per host core per second 
+      (e.g., one can create 180 microVMs per second on a host with 36 physical cores).
+* (5) The number of Firecracker microVMs running simultaneously on a host is limited only by the availability of hardware resources.
+* (6) Each microVM exposes a host-facing API (REST) via an in-process HTTP server.
+* (7) Each microVM provides guest-facing access to host-configured metadata via the /mmds API.  
 
 ## System Modules
 
 * Firecracker contains many small modules written in Rust.
     - Each module is small and contains only the necessary information needed to complete a task.
 
-* I think that the modules in Firecracker use the hierarchical approach. Each module has its own API and 
-  interface that other modules utilize to perform different tasks.
-    - TODO: Talk about the interface properties (orthogonality, idempotency, etc.)
+* I think that the modules in Firecracker use the hierarchical approach. Each module has its own API and interface
+  that other modules can utilize to perform different tasks.
+    - TODO: Talk about interface properties (orthogonality, idempotency, etc.)
 
 ### The Jailer Process
 
@@ -137,14 +137,14 @@
 * Since Firecracker has a relatively small TCB and is relatively simple, this could impact the number
   of bugs in the system and it can make it easier to fix bugs when they come up.
 
-[1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf
-[2] https://github.com/firecracker-microvm/firecracker/blob/master/docs/design.md
-[3] https://github.com/firecracker-microvm/firecracker/blob/master/docs/jailer.md
-[4] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L221-L278
-[5] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L367-L377
-[6] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/env.rs#L368-L464
-[7] https://github.com/firecracker-microvm/firecracker/blob/master/src/virtio_gen/src/virtio_ring.rs
-[8] https://github.com/firecracker-microvm/firecracker/blob/main/src/devices/src/virtio/net/tap.rs
+* [1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf
+* [2] https://github.com/firecracker-microvm/firecracker/blob/master/docs/design.md
+* [3] https://github.com/firecracker-microvm/firecracker/blob/master/docs/jailer.md
+* [4] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L221-L278
+* [5] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L367-L377
+* [6] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/env.rs#L368-L464
+* [7] https://github.com/firecracker-microvm/firecracker/blob/master/src/virtio_gen/src/virtio_ring.rs
+* [8] https://github.com/firecracker-microvm/firecracker/blob/main/src/devices/src/virtio/net/tap.rs
 
 
 
