@@ -28,7 +28,7 @@
 
 * Firecracker aims to provide safe and efficient machines and services that allow multiple clients to run on the same device isolated from each other.
 
-* Features [2]
+###  System Features (from design doc) [2]
 * (1) Firecracker can safely run workloads from different customers on the same machine.
 * (2) Customers can create microVMs with any combination of vCPU and memory to match their application requirements.
 * (3) Firecracker microVMs can oversubscribe host CPU and memory. The degree of oversubscription is controlled by customers, who may factor in workload correlation and load in order to ensure smooth host system operation.
@@ -40,12 +40,31 @@
 
 ## System Modules
 
-* Firecracker contains many small modules written in Rust.
+* Firecracker contains many small modules written in Rust. (e.g. jailer, dumbo, firecracker, device manager, event   
+  manager, micro_http, rate_limiter, etc.)
     - Each module is small and contains only the necessary information needed to complete a task.
 
-* I think that the modules in Firecracker use the hierarchical approach. Each module has its own API and interface
-  that other modules can utilize to perform different tasks.
-    - TODO: Talk about interface properties (orthogonality, idempotency, etc.)
+* I think that the modules in Firecracker use the hierarchical approach. Guest vCPUs being lowest in the hierarchy and 
+  the host being the highest on the hierarchy. (Seen in figure under Security)
+
+* Isolation barriers: jailer barrier and virtualization barrier (see figure under Security for visualization)
+    - Clients are completely isolated from each other.
+    - i.e. each Firecracker process (a microVM) is separated from the others.
+
+![image](https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/docs/images/firecracker_host_integration.png)
+
+* Communication between modules: modules communicate via events (through the event manager)
+  - Callback system? Example: [9]
+  - Event Manager manages I/O notifications and is responsible for managing ePollEvents
+```rust
+    pub struct EventManager {
+        epoll: Epoll,
+        subscribers: HashMap<RawFd, Arc<Mutex<dyn Subscriber>>>,
+        ready_events: Vec<EpollEvent>,
+    }
+```
+
+* Performance implications: 
 
 ### The Jailer Process
 
@@ -145,6 +164,8 @@
 * [6] https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/env.rs#L368-L464
 * [7] https://github.com/firecracker-microvm/firecracker/blob/master/src/virtio_gen/src/virtio_ring.rs
 * [8] https://github.com/firecracker-microvm/firecracker/blob/main/src/devices/src/virtio/net/tap.rs
+* [9] https://github.com/firecracker-microvm/firecracker/blob/main/src/polly/src/event_manager.rs#L50-L71
+
 
 
 
