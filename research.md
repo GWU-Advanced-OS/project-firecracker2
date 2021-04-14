@@ -15,7 +15,7 @@
 
 # What are the modules of the System
 
-* Client facing REST api receives requests from client module
+## Client facing REST api receives requests from client module
     - The following code is called when the HTTP connection checks for a valid request
 
 ```rust
@@ -66,7 +66,7 @@ match find(&self.buffer[*start..end], &[CR, LF]) {
 
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs) Lines 161-196
 
-* The following pops this request off of the parsed requests queue for the HTTP connection and appends it to
+  * The following pops this request off of the parsed requests queue for the HTTP connection and appends it to
         one associated with the client
 
 ```Rust
@@ -134,6 +134,82 @@ impl<T: Read + Write> ClientConnection<T> {
 ```
 
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs) Lines 97 - 150
+
+
+## VMM
+   - The VMM will boot up a new VM in response to a request for action, this happens in  pre-boot and runtime stages
+### Pre-boot
+- set up vm resources, event manager
+- handle preboot requests,  the implementation of which just change some elements of the vmresources struct
+
+```rust
+pub fn handle_preboot_request(&mut self, request: VmmAction) -> ActionResult {
+        use self::VmmAction::*;
+
+        match request {
+            // Supported operations allowed pre-boot.
+            ConfigureBootSource(config) => self.set_boot_source(config),
+            ConfigureLogger(logger_cfg) => {
+                vmm_config::logger::init_logger(logger_cfg, &self.instance_info)
+                    .map(|()| VmmData::Empty)
+                    .map_err(VmmActionError::Logger)
+            }
+            ConfigureMetrics(metrics_cfg) => vmm_config::metrics::init_metrics(metrics_cfg)
+                .map(|()| VmmData::Empty)
+                .map_err(VmmActionError::Metrics),
+            GetBalloonConfig => self.balloon_config(),
+            GetVmConfiguration => Ok(VmmData::MachineConfiguration(
+                self.vm_resources.vm_config().clone(),
+            )),
+            InsertBlockDevice(config) => self.insert_block_device(config),
+            InsertNetworkDevice(config) => self.insert_net_device(config),
+            LoadSnapshot(config) => self.load_snapshot(&config),
+            SetBalloonDevice(config) => self.set_balloon_device(config),
+            SetVsockDevice(config) => self.set_vsock_device(config),
+            SetVmConfiguration(config) => self.set_vm_config(config),
+            SetMmdsConfiguration(config) => self.set_mmds_config(config),
+            StartMicroVm => self.start_microvm(),
+            // Operations not allowed pre-boot.
+            CreateSnapshot(_)
+            | FlushMetrics
+            | Pause
+            | Resume
+            | GetBalloonStats
+            | UpdateBalloon(_)
+            | UpdateBalloonStatistics(_)
+            | UpdateBlockDevice(_)
+            | UpdateNetworkInterface(_) => Err(VmmActionError::OperationNotSupportedPreBoot),
+            #[cfg(target_arch = "x86_64")]
+            SendCtrlAltDel => Err(VmmActionError::OperationNotSupportedPreBoot),
+        }
+    }
+```
+
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/rpc_interface.rs) Lines 279 - 318
+
+- The vm resources struct contains the boot config, network and block devices (the boot config part will be super important later)
+```rust
+pub struct VmResources {
+    /// The vCpu and memory configuration for this microVM.
+    vm_config: VmConfig,
+    /// The boot configuration for this microVM.
+    boot_config: Option<BootConfig>, //Ryan: IMPORTANT!!!!!!!
+    /// The block devices.
+    pub block: BlockBuilder,
+    /// The vsock device.
+    pub vsock: VsockBuilder,
+    /// The balloon device.
+    pub balloon: BalloonBuilder,
+    /// The network devices builder.
+    pub net_builder: NetBuilder,
+    /// The configuration for `MmdsNetworkStack`.
+    pub mmds_config: Option<MmdsConfig>,
+    /// Whether or not to load boot timer device.
+    pub boot_timer: bool,
+}
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs) Lines 78-96
+
 
 
 
