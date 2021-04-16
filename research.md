@@ -365,7 +365,26 @@ pub struct VmResources {
 ```
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs) Lines 78-96
 
+## In what conditions is the performance of the system "good"? In what condition is it bad? How does it compare to Linux?
 
+### Good Conditons
+
+* Firecracker performs best when the MicroVMs are pre-configured through the pre-boot controllers API
+    - Recall the `VmResources -> boot_config` member above
+    - Allows EventManager to simple call `self.vm_start()`(TODO: Verify this function name - it's something like this)
+
+![Firecracker_Performance_Graph]("./img/firecracker_boot_times.JPG")
+
+* This graph[1] shows the boot times for firecracker microVMs (pre-configured and otherwise), compared to QEMU and CloudHV
+    - FC-pre has significantly better performance than QEMU, slightly better than CloudHV for parallel
+    - FC is still better than QEMU, but performs notable worse than FC-pre
+
+### Bad conditions
+
+* Firecracker suffers when there is no pre-specified boot configuration available to it (see the graph above)
+* Serverless workloads
+    - Firecracker VMs are NOT persistent, they are destroyed after they finish running and rebuilt to service the next request
+    - Systems requiring more persistent VM support should use other options
 
 
 
