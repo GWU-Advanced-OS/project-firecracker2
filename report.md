@@ -47,10 +47,266 @@ One firecracker process runs per MicroVM. This achieves a few of the goals requi
 
 Firecracker is more suited to be integrated with applications that has an event driven API. Long running an memory intensive workloads, would not be able to benefit greatly from Firecracker main selling point of being able to scale up and down.
 
+# :gear: What are the "modules" of the system?
 
-# System Modules :gear:
+Firecracker contains many small modules written in Rust which provide a role in isolation and ochestration between separate VMs. A single micro **Virtual Machine Manager process** exposes an API endpoint to the host once started. The endpoint can be used to configure the microVM resources,- such as CPU, memory, netorking - system metrics and booting and starting the VM.
+
+### The VMM is exposed through a RESTful API
+Firecracker is regulated via VmmAction's which provide an entry points into VMM logic. Some VmmActions include FlushMetrics, Pause, Resume,StartMicroVm ect.
+The API exposes different values of request that can be defined from a json request body. 
+````
+let json = r#"{
+                "action_type": "FlushMetrics"
+            }"#; 
+An example of a JSON request body to flush system metrics.
+````
+JSONs are parsed and the request is made. The following provides an example of sending a request to init a VM 
+````
+parsedRequest::new_sync(VmmAction::StartMicroVm);
+
+Example of sending a request to init a VM.
+````
+
+Requests can also come in over HTTP, which are parsed for the matching action request below
+```rust
+                /*
+                 * Ryan: Creates a wrapper around the incoming HTTP Request
+                 * Append the minimum request to the handler's
+                 * pending_request queue
+                 */
+                self.pending_request = Some(Request {
+                    request_line: RequestLine::try_from(line)
+                        .map_err(ConnectionError::ParseError)?,
+                    headers: Headers::default(),
+                    body: None,
+                });
+                self.state = ConnectionState::WaitingForHeaders;
+                Ok(true)
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs) Lines 161-196
+
+`self.pending_request` is a queue of incoming requests over this HTTP connection
+
+These requests are popped off of the HTTP connection's queue and onto the Client's below
+
+```rust
+            /*
+             * Ryan: the above are all error cases, the loop below is the intended behavior
+             *   removes the request from the connection (allowing it to listen for more requests), and place it 
+             *   in the client struct's request queue to be dealt with later
+             */
+            Ok(()) => {
+                while let Some(request) = self.connection.pop_parsed_request() {
+                    // Add all valid requests to `parsed_requests`.
+                    parsed_requests.push(request);
+                }
+            }
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs) Lines 97 - 150
+
+#### The VMM:
+
+The VMM is responsible for handling pre-boot and runtime requests from the firecracker VMM, as well as setting the boot configuration and setting up the VM for boot.
+
+Pre-boot event handler
+```rust
+pub fn handle_preboot_request(&mut self, request: VmmAction) -> ActionResult {
+        use self::VmmAction::*;
+
+        match request {
+            // Supported operations allowed pre-boot.
+            ConfigureBootSource(config) => self.set_boot_source(config),
+            ConfigureLogger(logger_cfg) => {
+                vmm_config::logger::init_logger(logger_cfg, &self.instance_info)
+                    .map(|()| VmmData::Empty)
+                    .map_err(VmmActionError::Logger)
+            }
+            ConfigureMetrics(metrics_cfg) => vmm_config::metrics::init_metrics(metrics_cfg)
+                .map(|()| VmmData::Empty)
+                .map_err(VmmActionError::Metrics),
+            GetBalloonConfig => self.balloon_config(),
+            GetVmConfiguration => Ok(VmmData::MachineConfiguration(
+                self.vm_resources.vm_config().clone(),
+            )),
+            InsertBlockDevice(config) => self.insert_block_device(config),
+            InsertNetworkDevice(config) => self.insert_net_device(config),
+            LoadSnapshot(config) => self.load_snapshot(&config),
+            SetBalloonDevice(config) => self.set_balloon_device(config),
+            SetVsockDevice(config) => self.set_vsock_device(config),
+            SetVmConfiguration(config) => self.set_vm_config(config),
+            SetMmdsConfiguration(config) => self.set_mmds_config(config),
+            StartMicroVm => self.start_microvm(),
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/rpc_interface.rs) Lines 279 - 318
+
+#### BUILDING AND BOOTING THE MICROVM
+
+The following code sets the config info for the microVM
+
+```rust
+pub fn build_microvm_for_boot(
+    vm_resources: &super::resources::VmResources, //VmResources (IMPORTANT) struct for this VM
+    event_manager: &mut EventManager, 
+    seccomp_filter: BpfProgramRef,
+) -> std::result::Result<Arc<Mutex<Vmm>>, StartMicrovmError> {
+    use self::StartMicrovmError::*;
+    let boot_config = vm_resources.boot_source().ok_or(MissingKernelConfig)?;
+    
+    //continued below
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs) Lines 286-292
+
+Why is the VmResources struct important? Well,
+
+```rust
+pub struct VmResources {
+    /// The vCpu and memory configuration for this microVM.
+    vm_config: VmConfig,
+    /// The boot configuration for this microVM.
+    boot_config: Option<BootConfig>,  // IMPORTANT!!!
+    /// The block devices.
+    pub block: BlockBuilder,
+    /// The vsock device.
+    pub vsock: VsockBuilder,
+    /// The balloon device.
+    pub balloon: BalloonBuilder,
+    /// The network devices builder.
+    pub net_builder: NetBuilder,
+    /// The configuration for `MmdsNetworkStack`.
+    pub mmds_config: Option<MmdsConfig>,
+    /// Whether or not to load boot timer device.
+    pub boot_timer: bool,
+}
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs) Lines 78-96
+
+The `VmResources.boot_config` member is returned from the vm_resouces.boot_source() if it exists, this is what allows for the pre-configuration that makes firecracker so fast!
+[The request](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L36) is then [matched](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L58) for the corresponding action/method to be run and system metrics are updated.   
+
+### System metrics: 
+The system store two types of metrics. Shared stored metrics are metrics that do not require a counter such as [performance metrics for VM boot time](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L542). Shared incremental metrics are metrics that do require a counter such as the number of [API request that trigger specific actions](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L300) and the number of [failed requests](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/request/actions.rs#L32).
+
+### Event Manager:
+
+The event manager is a pipe with FIFO policy that helps support virtualized IO. It contains a buffer for storing events returned by epoll_wait. 
+```rust
+    pub struct EventManager {
+        epoll: Epoll,
+        subscribers: HashMap<RawFd, Arc<Mutex<dyn Subscriber>>>,
+        ready_events: Vec<EpollEvent>,
+    }
+```
+The provides an abstraction to provide virtualized IO for functinality such as port IO and memory mapped IO.
+
+### Jailer:
+The jailer process is responsible for starting a new Firecracker process. The jailer initializes system resources that require higher priviledges and executes into the Firecracker binary which spawns a new Firecracker process which runs in the microVM as an unpriviledged process.
+
+Once the jailer is invoked, a new Environment is created based on the parsed arguments. See the code [here](https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L367-L377).
+
+```rust
+    pub struct Env {
+        id: String,
+        chroot_dir: PathBuf,
+        exec_file_path: PathBuf,
+        uid: u32,
+        gid: u32,
+        netns: Option<String>,
+        daemonize: bool,
+        start_time_us: u64,
+        start_time_cpu_us: u64,
+        extra_args: Vec<String>,
+        cgroups: Vec<Cgroup>,
+    }
+```
+
+Once a new Env is created, it is run which joins the specified network, initializes the cgroups, and sets up the folder hierarchy and permissions. Once everything is initialized, the Env [executes the specified exec_file](https://github.com/firecracker-microvm/firecracker/blob/main/src/jailer/src/env.rs#L450-L462) passed into the jailer which will create a new Firecracker process. 
 
 
+### Rate limiter: 
+Allows users to control through Firecracker's RESTful API how network and storage resources are shared, even across thousands of microVMs.
+
+The rate limiter uses a [token system](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/rate_limiter/src/lib.rs#L240) to limit the number of operations per second as well as bandwidth. Each typer of token has a coresponding bucket with a budget that it has been allocated. If any of the buckets run out of budget, the limiter will enter a blocked state. At this point a timer will then notify the user to retry sending the data. 
+
+# Where are the isolation boundaries present?
+ 
+![Isolation Boundaries](https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/docs/images/firecracker_host_integration.png)
+
+Firecracker introduces multiple layers of isolation into the system. Each Firecracker process is isolated from the other microVMs by the jailer barrier (darker red). This barrier isolates the different microVMs from each other. Furthermore, there is another virtualization barrier (lighter red) which further isolates the customer from the rest of the microVM.
+
+For more information on these isolation boundaries, see the image under "Firecracker Security."
+
+
+# Firecracker Security
+
+![Firecracker isolation and security](https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/docs/images/firecracker_threat_containment.png)
+
+### Security Principles
+**Defense in Depth:** Firecracker utilizes strong VM isolation and containment by having several nested layers of depth, each with different levels of trust and access. Further, Firecracker also contains different barriers that enforce different aspects of security. These layers and barriers combine to give Firecracker strong defense in depth.
+
+**Minimal Trusted Computing Base (TCB):** Firecracker's codebase is ~50k LoC which is 96% less than QEMU. Furthermore, their minimalist design removes all unecessary resources from the system which makes the Firecracker TCB small.
+
+**Separation of Privelege:** A new firecracker VM is booted up to service each request. These VMs run at a lower privelege level than the EventManager or VMM and only communicate with the VMM through a pre-defined set of requests.
+
+### CIA
+**Confidentiality:** Requests are kept confidential to the VM they run in, which is created and destroyed when the request enters and exits the system. Since one firecracker process runs per MicroVM, we have a pretty clear case for isolation.  
+
+**Integrity:** Once booted, a firecracker VM is even more strictly limited with how it can interact with the VMM.
+```rust
+// Operations not allowed post-boot.
+ConfigureBootSource(_)
+| ConfigureLogger(_)
+| ConfigureMetrics(_)
+| InsertBlockDevice(_)
+| InsertNetworkDevice(_)
+| LoadSnapshot(_)
+| SetBalloonDevice(_)
+| SetVsockDevice(_)
+| SetMmdsConfiguration(_)
+| SetVmConfiguration(_)
+| StartMicroVm => Err(VmmActionError::OperationNotSupportedPostBoot),
+```
+Firecracker limits the kernel's that can be used to boot a firecracker VM to well known operating systems (i.e. Linux), creating more barriers between a malicious user and the VMM.
+
+**Accessibility:** Since the VMs are not persistent, the only way to cause a denial of service would be to prevent the system from creating new VMs, which would be a lot harder than just sending requests to the same persistent server. By having a single process per VM, Firecracker VMs can be pre configured to consume only the amount of memory and CPU resources required of that process, which prevents a single firecracker VM from using up all of the resources available.
+
+### Reference Monitor
+
+The device manager, the jailer, vmm (http requests), rate limiter provide orchestration of resources across VMs. 
+
+
+# System performance. Compared to Linux?
+
+### Boot Speed
+Firecracker performs best when the MicroVMS are pre-configred through the pre-boot controller's API (above)
+- Specifically recall the `VmResources.boot_config` struct member
+
+![Firecracker_Performance_Graph](img/firecracker_boot_times.JPG)
+
+This graph[[1]] shows the boot times for firecracker microVMs (pre-configured (FC-pre) and otherwise (FC)), compared to QEMU and CloudHV
+- FC-pre has significantly better performance than QEMU, on-par with CloudHV in serial and slightly faster in parallel
+- FC is still better than QEMU, but is notably worse than it's pre-configured variant
+
+Firecracker is designed for serverless workloads, the microVMs are NOT persistent, so any system requiring a single VM to run indefinitely should use a different solution.
+
+### I/O Bandwidth
+
+![FC_IO_Graph](img/FC_IO.JPG)
+
+Firecracker performs around evenly with CloudHV for small and large reads/writes
+- QEMU has much better throughput for reads (the paper[1] acknowledges QEMU has more optimized I/O paths)
+- On large writes, FC and CLoudHV have much higher throughput (why??)
+
+# Core technologies and how are they composed?
+
+### Serverless Architecture
+
+### MicroVMs and Warming
+
+
+
+# Optimizations and Fast Paths :lightning:
+
+A key optimization to firecracker is the pre-configured boot that results in the fast boot times for FC-pre in the graph above.
 
 # 	:scroll: References
 
