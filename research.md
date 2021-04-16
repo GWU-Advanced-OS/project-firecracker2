@@ -365,7 +365,55 @@ pub struct VmResources {
 ```
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs) Lines 78-96
 
+## In what conditions is the performance of the system "good"? In what condition is it bad? How does it compare to Linux?
+
+### Good Conditons
+
+* Firecracker performs best when the MicroVMs are pre-configured through the pre-boot controllers API
+    - Recall the `VmResources -> boot_config` member above
+    - Allows EventManager to simple call `self.vm_start()`(TODO: Verify this function name - it's something like this)
+
+![Firecracker_Performance_Graph](img/firecracker_boot_times.JPG)
+
+* This graph[1] shows the boot times for firecracker microVMs (pre-configured and otherwise), compared to QEMU and CloudHV
+    - FC-pre has significantly better performance than QEMU, slightly better than CloudHV for parallel
+    - FC is still better than QEMU, but performs notable worse than FC-pre
+
+### Bad conditions
+
+* Firecracker suffers when there is no pre-specified boot configuration available to it (see the graph above)
+* Serverless workloads
+    - Firecracker VMs are NOT persistent, they are destroyed after they finish running and rebuilt to service the next request
+    - Systems requiring more persistent VM support should use other options
 
 
+## Security Properties
 
+### CIA
+
+* Confidentiality
+    - Since VMs are created to respond to a job and destroyed after, the actions/data of any VM should be confidential from the others as they stop existing once the work is done.
+    - The `struct VmResources` seems to contain everything the VMM needs, so that would be the only thing not confidential to the VMM
+
+* Integrity
+    - Once the firecrackerVM boots up, there are a set of requests that it is no longer allowed to make to the VMM, such as changing it's network configuration or loading a new snapshot.
+
+```rust
+ // Operations not allowed post-boot.
+            ConfigureBootSource(_)
+            | ConfigureLogger(_)
+            | ConfigureMetrics(_)
+            | InsertBlockDevice(_)
+            | InsertNetworkDevice(_)
+            | LoadSnapshot(_)
+            | SetBalloonDevice(_)
+            | SetVsockDevice(_)
+            | SetMmdsConfiguration(_)
+            | SetVmConfiguration(_)
+            | StartMicroVm => Err(VmmActionError::OperationNotSupportedPostBoot),
+```
+
+* Availability
+    - By working around serverless workloads, firecracker is able to guarantee availability of VMs up the point where the maximum number of concurrent VMs are active (TODO: figure out if this is a hard number or just a range).
+    - A user attempting to launch a DoS attack would only be able to deny service within their own VM, which no other users share
 
