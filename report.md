@@ -47,6 +47,11 @@ One firecracker process runs per MicroVM. This achieves a few of the goals requi
 
 Firecracker is more suited to be integrated with applications that has an event driven API. Long running an memory intensive workloads, would not be able to benefit greatly from Firecracker main selling point of being able to scale up and down.
 
+
+# System Modules :gear:
+
+
+
 # 	:scroll: References
 
 [1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf  
