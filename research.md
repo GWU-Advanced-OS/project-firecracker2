@@ -460,3 +460,37 @@ pub(crate) fn setup_kvm_vm(
 ```
 
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L543-L556)
+
+* The KvmContext constructor sets up the ioctl capabilites that the VMM has
+
+```rust
+  // A list of KVM capabilities we want to check.
+        #[cfg(target_arch = "x86_64")]
+        let capabilities = vec![
+            Irqchip,
+            Ioeventfd,
+            Irqfd,
+            UserMemory,
+            SetTssAddr,
+            Pit2,
+            PitState2,
+            AdjustClock,
+            Debugregs,
+            MpState,
+            VcpuEvents,
+            Xcrs,
+            Xsave,
+            ExtCpuid,
+        ];
+
+        #[cfg(target_arch = "aarch64")]
+        let capabilities = vec![
+            Irqchip, Ioeventfd, Irqfd, UserMemory, ArmPsci02, DeviceCtrl, MpState, OneReg,
+        ];
+```
+
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/vstate/system.rs#L60-L82)
+
+* [Setting up custom kernel image](https://github.com/firecracker-microvm/firecracker/blob/main/docs/rootfs-and-kernel-setup.md)
+    - This documentation shows how to build Linux v4.20 to be booted into a firecracker VM
+    - Once built into the `vmlinux` kernel image, can be referenced by the `BootConfig.kernel_file`
