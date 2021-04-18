@@ -371,7 +371,6 @@ pub struct VmResources {
 
 * Firecracker performs best when the MicroVMs are pre-configured through the pre-boot controllers API
     - Recall the `VmResources -> boot_config` member above
-    - Allows EventManager to simple call `self.vm_start()`(TODO: Verify this function name - it's something like this)
 
 ![Firecracker_Performance_Graph](img/firecracker_boot_times.JPG)
 
@@ -417,3 +416,47 @@ pub struct VmResources {
     - By working around serverless workloads, firecracker is able to guarantee availability of VMs up the point where the maximum number of concurrent VMs are active (TODO: figure out if this is a hard number or just a range).
     - A user attempting to launch a DoS attack would only be able to deny service within their own VM, which no other users share
 
+# Optimizations
+
+## Pre-configured firecracker VMs for quicker boot
+* Per the performance graph above, FC-pre (firecracker booting a pre-configured VM) is much faster than booting a VM that wasn't pre-configured (both are faster than QEMU).
+
+```rust
+/// Holds the kernel configuration.
+#[derive(Debug)]
+pub struct BootConfig {
+    /// The commandline validated against correctness.
+    pub cmdline: kernel::cmdline::Cmdline,
+    /// The descriptor to the kernel file.
+    pub kernel_file: std::fs::File,
+    /// The descriptor to the initrd file, if there is one
+    pub initrd_file: Option<std::fs::File>,
+}
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/vmm_config/boot_source.rs#L66-L75)
+
+Boot config struct, contains a reference to the kernel file which is loaded into the VMM for boot.
+
+### KVM interaction 
+* The KVM is loaded in as a crate (the Rust equivalent of a library)
+    - The VMM calls `setup_kvm_vm()` when setting up the VMM and VCPUs
+
+```rust
+
+pub(crate) fn setup_kvm_vm(
+    guest_memory: &GuestMemoryMmap,
+    track_dirty_pages: bool,
+) -> std::result::Result<Vm, StartMicrovmError> {
+    use self::StartMicrovmError::Internal;
+    let kvm = KvmContext::new()
+        .map_err(Error::KvmContext)
+        .map_err(Internal)?;
+    let mut vm = Vm::new(kvm.fd()).map_err(Error::Vm).map_err(Internal)?;
+    vm.memory_init(&guest_memory, kvm.max_memslots(), track_dirty_pages)
+        .map_err(Error::Vm)
+        .map_err(Internal)?;
+    Ok(vm)
+}
+```
+
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L543-L556)

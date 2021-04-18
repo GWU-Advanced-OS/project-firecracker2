@@ -83,7 +83,7 @@ Requests can also come in over HTTP, which are parsed for the matching action re
                 self.state = ConnectionState::WaitingForHeaders;
                 Ok(true)
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs) Lines 161-196
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs#L161-L196)
 
 `self.pending_request` is a queue of incoming requests over this HTTP connection
 
@@ -102,7 +102,7 @@ These requests are popped off of the HTTP connection's queue and onto the Client
                 }
             }
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs) Lines 97 - 150
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs#L97-L150)
 
 #### The VMM:
 
@@ -137,7 +137,7 @@ pub fn handle_preboot_request(&mut self, request: VmmAction) -> ActionResult {
             SetMmdsConfiguration(config) => self.set_mmds_config(config),
             StartMicroVm => self.start_microvm(),
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/rpc_interface.rs) Lines 279 - 318
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/rpc_interface.rs#L279-L318)
 
 #### BUILDING AND BOOTING THE MICROVM
 
@@ -154,7 +154,7 @@ pub fn build_microvm_for_boot(
     
     //continued below
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs) Lines 286-292
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L286-L292)
 
 Why is the VmResources struct important? Well,
 
@@ -178,7 +178,7 @@ pub struct VmResources {
     pub boot_timer: bool,
 }
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs) Lines 78-96
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs#L78-L96)
 
 The `VmResources.boot_config` member is returned from the vm_resouces.boot_source() if it exists, this is what allows for the pre-configuration that makes firecracker so fast!
 [The request](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L36) is then [matched](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L58) for the corresponding action/method to be run and system metrics are updated.   
