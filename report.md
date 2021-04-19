@@ -183,6 +183,60 @@ pub struct VmResources {
 The `VmResources.boot_config` member is returned from the vm_resouces.boot_source() if it exists, this is what allows for the pre-configuration that makes firecracker so fast!
 [The request](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L36) is then [matched](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L58) for the corresponding action/method to be run and system metrics are updated.   
 
+## Module Interaction
+
+* The VMM interacts with the Client module through the RESTful API detailed above.
+
+* The KVM is loaded into firecracker as a crate (read: library) and is set up as part of the [create_vmm_and_vcpus()](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L206) function.
+
+```rust
+
+pub(crate) fn setup_kvm_vm(
+    guest_memory: &GuestMemoryMmap,
+    track_dirty_pages: bool,
+) -> std::result::Result<Vm, StartMicrovmError> {
+    use self::StartMicrovmError::Internal;
+    let kvm = KvmContext::new()
+        .map_err(Error::KvmContext)
+        .map_err(Internal)?;
+    let mut vm = Vm::new(kvm.fd()).map_err(Error::Vm).map_err(Internal)?;
+    vm.memory_init(&guest_memory, kvm.max_memslots(), track_dirty_pages)
+        .map_err(Error::Vm)
+        .map_err(Internal)?;
+    Ok(vm)
+}
+```
+
+* This function calls the constructor for a `KvmContext` object. 
+    - This constructor instatiates a KVM object (which just holds some configuration/capability information of the KVM) and then checks a set of capabilities based on the architecture.
+```rust
+  // A list of KVM capabilities we want to check.
+        #[cfg(target_arch = "x86_64")]
+        let capabilities = vec![
+            Irqchip,
+            Ioeventfd,
+            Irqfd,
+            UserMemory,
+            SetTssAddr,
+            Pit2,
+            PitState2,
+            AdjustClock,
+            Debugregs,
+            MpState,
+            VcpuEvents,
+            Xcrs,
+            Xsave,
+            ExtCpuid,
+        ];
+
+        #[cfg(target_arch = "aarch64")]
+        let capabilities = vec![
+            Irqchip, Ioeventfd, Irqfd, UserMemory, ArmPsci02, DeviceCtrl, MpState, OneReg,
+        ];
+```
+
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/vstate/system.rs#L60-L82)
+
 ### System metrics: 
 The system store two types of metrics. Shared stored metrics are metrics that do not require a counter such as [performance metrics for VM boot time](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L542). Shared incremental metrics are metrics that do require a counter such as the number of [API request that trigger specific actions](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L300) and the number of [failed requests](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/request/actions.rs#L32).
 
@@ -307,6 +361,27 @@ Firecracker performs around evenly with CloudHV for small and large reads/writes
 # Optimizations and Fast Paths :lightning:
 
 A key optimization to firecracker is the pre-configured boot that results in the fast boot times for FC-pre in the graph above.
+
+* How does this work?
+    - Each VM has an associated `VmResources` struct, which contains a `BootConfig` data field (see above)
+
+```rust
+/// Holds the kernel configuration.
+#[derive(Debug)]
+pub struct BootConfig {
+    /// The commandline validated against correctness.
+    pub cmdline: kernel::cmdline::Cmdline,
+    /// The descriptor to the kernel file.
+    pub kernel_file: std::fs::File,
+    /// The descriptor to the initrd file, if there is one
+    pub initrd_file: Option<std::fs::File>,
+}
+```
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/vmm_config/boot_source.rs#L66-L75)
+
+* Looking at the definition of the BootConfig struct, notice the `kernel_file` member. This is a reference to the configured kernel file associated with this VM.
+
+* This struct is returned in the function [build_microvm_for_boot](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L286) which sets up the virtual environment to boot the referenced kernel.
 
 # 	:scroll: References
 
