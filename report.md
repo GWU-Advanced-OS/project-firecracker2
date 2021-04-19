@@ -83,7 +83,7 @@ Requests can also come in over HTTP, which are parsed for the matching action re
                 self.state = ConnectionState::WaitingForHeaders;
                 Ok(true)
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs#L161-L196)
+* [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs#L161-L196)
 
 `self.pending_request` is a queue of incoming requests over this HTTP connection
 
@@ -102,13 +102,13 @@ These requests are popped off of the HTTP connection's queue and onto the Client
                 }
             }
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs#L97-L150)
+* [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs#L97-L150)
 
 #### The VMM:
 
-The VMM is responsible for handling pre-boot and runtime requests from the firecracker VMM, as well as setting the boot configuration and setting up the VM for boot.
+* The VMM is responsible for handling pre-boot and runtime requests from the firecracker VMM, as well as setting the boot configuration and setting up the VM for boot.
 
-Pre-boot event handler
+* Pre-boot event handler
 ```rust
 pub fn handle_preboot_request(&mut self, request: VmmAction) -> ActionResult {
         use self::VmmAction::*;
@@ -139,9 +139,9 @@ pub fn handle_preboot_request(&mut self, request: VmmAction) -> ActionResult {
 ```
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/rpc_interface.rs#L279-L318)
 
-#### BUILDING AND BOOTING THE MICROVM
+#### Building and booting the MicroVM
 
-The following code sets the config info for the microVM
+* The following code sets the config info for the microVM
 
 ```rust
 pub fn build_microvm_for_boot(
@@ -154,9 +154,9 @@ pub fn build_microvm_for_boot(
     
     //continued below
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L286-L292)
+* [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L286-L292)
 
-Why is the VmResources struct important? Well,
+* Why is the VmResources struct important? Well,
 
 ```rust
 pub struct VmResources {
@@ -178,15 +178,63 @@ pub struct VmResources {
     pub boot_timer: bool,
 }
 ```
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs#L78-L96)
+* [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/resources.rs#L78-L96)
 
-The `VmResources.boot_config` member is returned from the vm_resouces.boot_source() if it exists, this is what allows for the pre-configuration that makes firecracker so fast!
+* The `VmResources.boot_config` member is returned from the vm_resouces.boot_source() if it exists, this is what allows for the pre-configuration that makes firecracker so fast!
+    - Note: the call to `ok_or()` on the object returned by `boot_source()` will throw an error if there is no boot configuration.
+
 [The request](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L36) is then [matched](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/parsed_request.rs#L58) for the corresponding action/method to be run and system metrics are updated.   
+
+
+
+### Event Manager:
+
+The event manager is a pipe with FIFO policy that helps support virtualized IO. It contains a buffer for storing events returned by epoll_wait. 
+```rust
+    pub struct EventManager {
+        epoll: Epoll,
+        subscribers: HashMap<RawFd, Arc<Mutex<dyn Subscriber>>>,
+        ready_events: Vec<EpollEvent>,
+    }
+```
+The provides an abstraction to provide virtualized IO for functinality such as port IO and memory mapped IO.
+
+### Jailer:
+The jailer process is responsible for starting a new Firecracker process. The jailer initializes system resources that require higher priviledges and executes into the Firecracker binary which spawns a new Firecracker process which runs in the microVM as an unpriviledged process.
+
+Once the jailer is invoked, a new Environment is created based on the parsed arguments. See the code [here](https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L367-L377).
+
+```rust
+    pub struct Env {
+        id: String,
+        chroot_dir: PathBuf,
+        exec_file_path: PathBuf,
+        uid: u32,
+        gid: u32,
+        netns: Option<String>,
+        daemonize: bool,
+        start_time_us: u64,
+        start_time_cpu_us: u64,
+        extra_args: Vec<String>,
+        cgroups: Vec<Cgroup>,
+    }
+```
+
+Once a new Env is created, it is run which joins the specified network, initializes the cgroups, and sets up the folder hierarchy and permissions. Once everything is initialized, the Env [executes the specified exec_file](https://github.com/firecracker-microvm/firecracker/blob/main/src/jailer/src/env.rs#L450-L462) passed into the jailer which will create a new Firecracker process. 
+
+
+### Rate limiter: 
+Allows users to control through Firecracker's RESTful API how network and storage resources are shared, even across thousands of microVMs.
+
+The rate limiter uses a [token system](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/rate_limiter/src/lib.rs#L240) to limit the number of operations per second as well as bandwidth. Each typer of token has a coresponding bucket with a budget that it has been allocated. If any of the buckets run out of budget, the limiter will enter a blocked state. At this point a timer will then notify the user to retry sending the data. 
+
 
 ## Module Interaction
 
-* The VMM interacts with the Client module through the RESTful API detailed above.
+### VMM and Client
+* The VMM and Client communicate through the RESTful API detailed above (TODO: add link)
 
+### VMM and KVM
 * The KVM is loaded into firecracker as a crate (read: library) and is set up as part of the [create_vmm_and_vcpus()](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L206) function.
 
 ```rust
@@ -235,52 +283,36 @@ pub(crate) fn setup_kvm_vm(
         ];
 ```
 
-[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/vstate/system.rs#L60-L82)
+* [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/vstate/system.rs#L60-L82)
 
+### VMM and Host Kernel
+* The VMM makes calls to the host kernel to assist in loading the VM kernel image and the initial set up of guest memory.
+    - As part of the function [build_microvm_for_boot](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L286) the VMM calls `load_kernel()`, passing in the boot configuration and guest memory mapping as arguments.
+
+```rust
+fn load_kernel(
+    boot_config: &BootConfig,
+    guest_memory: &GuestMemoryMmap,
+) -> std::result::Result<GuestAddress, StartMicrovmError> {
+    let mut kernel_file = boot_config
+        .kernel_file
+        .try_clone()
+        .map_err(|e| StartMicrovmError::Internal(Error::KernelFile(e)))?;
+
+    let entry_addr =
+        kernel::loader::load_kernel(guest_memory, &mut kernel_file, arch::get_kernel_start())
+            .map_err(StartMicrovmError::KernelLoader)?;
+
+    Ok(entry_addr)
+}
+```
+
+* the `kernel::loader::load_kernel()` function is a host function that loads the elf headers and entries and does the initial mapping of the kernel image to the guest memory.
+- See the function [here](https://github.com/firecracker-microvm/firecracker/blob/main/src/kernel/src/loader/mod.rs#L79-L151)
+
+* [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L468-L482)
 ### System metrics: 
 The system store two types of metrics. Shared stored metrics are metrics that do not require a counter such as [performance metrics for VM boot time](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L542). Shared incremental metrics are metrics that do require a counter such as the number of [API request that trigger specific actions](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L300) and the number of [failed requests](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/request/actions.rs#L32).
-
-### Event Manager:
-
-The event manager is a pipe with FIFO policy that helps support virtualized IO. It contains a buffer for storing events returned by epoll_wait. 
-```rust
-    pub struct EventManager {
-        epoll: Epoll,
-        subscribers: HashMap<RawFd, Arc<Mutex<dyn Subscriber>>>,
-        ready_events: Vec<EpollEvent>,
-    }
-```
-The provides an abstraction to provide virtualized IO for functinality such as port IO and memory mapped IO.
-
-### Jailer:
-The jailer process is responsible for starting a new Firecracker process. The jailer initializes system resources that require higher priviledges and executes into the Firecracker binary which spawns a new Firecracker process which runs in the microVM as an unpriviledged process.
-
-Once the jailer is invoked, a new Environment is created based on the parsed arguments. See the code [here](https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L367-L377).
-
-```rust
-    pub struct Env {
-        id: String,
-        chroot_dir: PathBuf,
-        exec_file_path: PathBuf,
-        uid: u32,
-        gid: u32,
-        netns: Option<String>,
-        daemonize: bool,
-        start_time_us: u64,
-        start_time_cpu_us: u64,
-        extra_args: Vec<String>,
-        cgroups: Vec<Cgroup>,
-    }
-```
-
-Once a new Env is created, it is run which joins the specified network, initializes the cgroups, and sets up the folder hierarchy and permissions. Once everything is initialized, the Env [executes the specified exec_file](https://github.com/firecracker-microvm/firecracker/blob/main/src/jailer/src/env.rs#L450-L462) passed into the jailer which will create a new Firecracker process. 
-
-
-### Rate limiter: 
-Allows users to control through Firecracker's RESTful API how network and storage resources are shared, even across thousands of microVMs.
-
-The rate limiter uses a [token system](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/rate_limiter/src/lib.rs#L240) to limit the number of operations per second as well as bandwidth. Each typer of token has a coresponding bucket with a budget that it has been allocated. If any of the buckets run out of budget, the limiter will enter a blocked state. At this point a timer will then notify the user to retry sending the data. 
-
 # Where are the isolation boundaries present?
  
 ![Isolation Boundaries](https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/docs/images/firecracker_host_integration.png)

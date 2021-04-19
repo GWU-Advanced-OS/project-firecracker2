@@ -494,3 +494,32 @@ pub(crate) fn setup_kvm_vm(
 * [Setting up custom kernel image](https://github.com/firecracker-microvm/firecracker/blob/main/docs/rootfs-and-kernel-setup.md)
     - This documentation shows how to build Linux v4.20 to be booted into a firecracker VM
     - Once built into the `vmlinux` kernel image, can be referenced by the `BootConfig.kernel_file`
+    - loaded w/ help of host kernel in `load_kernel()` call
+
+
+### Host(?) Kernel and VMM
+
+* The VMM sets up the guest kernel with the `load_kernel()` function, passes in the boot config from the VmResources
+
+```rust
+fn load_kernel(
+    boot_config: &BootConfig,
+    guest_memory: &GuestMemoryMmap,
+) -> std::result::Result<GuestAddress, StartMicrovmError> {
+    let mut kernel_file = boot_config
+        .kernel_file
+        .try_clone()
+        .map_err(|e| StartMicrovmError::Internal(Error::KernelFile(e)))?;
+
+    let entry_addr =
+        kernel::loader::load_kernel(guest_memory, &mut kernel_file, arch::get_kernel_start())
+            .map_err(StartMicrovmError::KernelLoader)?;
+
+    Ok(entry_addr)
+}
+```
+
+[Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L486-L482)
+
+* The VMM calls the host kernel's [load_kernel() function](https://github.com/firecracker-microvm/firecracker/blob/main/src/kernel/src/loader/mod.rs#L79-L151) to map the the guest kernel into the guest memory.
+    - This function sets up the elf headers and entries and handles the initial guest memory set up.
