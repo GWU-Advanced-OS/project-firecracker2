@@ -69,19 +69,19 @@ Example of sending a request to init a VM.
 
 Requests can also come in over HTTP, which are parsed for the matching action request below
 ```rust
-                /*
-                 * Ryan: Creates a wrapper around the incoming HTTP Request
-                 * Append the minimum request to the handler's
-                 * pending_request queue
-                 */
-                self.pending_request = Some(Request {
-                    request_line: RequestLine::try_from(line)
-                        .map_err(ConnectionError::ParseError)?,
-                    headers: Headers::default(),
-                    body: None,
-                });
-                self.state = ConnectionState::WaitingForHeaders;
-                Ok(true)
+/*
+ * Ryan: Creates a wrapper around the incoming HTTP Request
+ * Append the minimum request to the handler's
+ * pending_request queue
+ */
+self.pending_request = Some(Request {
+    request_line: RequestLine::try_from(line)
+        .map_err(ConnectionError::ParseError)?,
+    headers: Headers::default(),
+    body: None,
+});
+self.state = ConnectionState::WaitingForHeaders;
+Ok(true)
 ```
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/connection.rs) Lines 161-196
 
@@ -90,17 +90,17 @@ Requests can also come in over HTTP, which are parsed for the matching action re
 These requests are popped off of the HTTP connection's queue and onto the Client's below
 
 ```rust
-            /*
-             * Ryan: the above are all error cases, the loop below is the intended behavior
-             *   removes the request from the connection (allowing it to listen for more requests), and place it 
-             *   in the client struct's request queue to be dealt with later
-             */
-            Ok(()) => {
-                while let Some(request) = self.connection.pop_parsed_request() {
-                    // Add all valid requests to `parsed_requests`.
-                    parsed_requests.push(request);
-                }
-            }
+/*
+ * Ryan: the above are all error cases, the loop below is the intended behavior
+ *   removes the request from the connection (allowing it to listen for more requests), and place it 
+ *   in the client struct's request queue to be dealt with later
+ */
+Ok(()) => {
+    while let Some(request) = self.connection.pop_parsed_request() {
+        // Add all valid requests to `parsed_requests`.
+        parsed_requests.push(request);
+    }
+}
 ```
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/micro_http/src/server.rs) Lines 97 - 150
 
@@ -139,13 +139,13 @@ pub fn handle_preboot_request(&mut self, request: VmmAction) -> ActionResult {
 ```
 [Source](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/rpc_interface.rs) Lines 279 - 318
 
-#### BUILDING AND BOOTING THE MICROVM
+#### Building and Booting the microVM
 
 The following code sets the config info for the microVM
 
 ```rust
 pub fn build_microvm_for_boot(
-    vm_resources: &super::resources::VmResources, //VmResources (IMPORTANT) struct for this VM
+    vm_resources: &super::resources::VmResources, // VmResources (IMPORTANT) struct for this VM
     event_manager: &mut EventManager, 
     seccomp_filter: BpfProgramRef,
 ) -> std::result::Result<Arc<Mutex<Vmm>>, StartMicrovmError> {
@@ -186,46 +186,56 @@ The `VmResources.boot_config` member is returned from the vm_resouces.boot_sourc
 ### System metrics: 
 The system store two types of metrics. Shared stored metrics are metrics that do not require a counter such as [performance metrics for VM boot time](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L542). Shared incremental metrics are metrics that do require a counter such as the number of [API request that trigger specific actions](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/logger/src/metrics.rs#L300) and the number of [failed requests](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/api_server/src/request/actions.rs#L32).
 
-### Event Manager:
-
-The event manager is a pipe with FIFO policy that helps support virtualized IO. It contains a buffer for storing events returned by epoll_wait. 
-```rust
-    pub struct EventManager {
-        epoll: Epoll,
-        subscribers: HashMap<RawFd, Arc<Mutex<dyn Subscriber>>>,
-        ready_events: Vec<EpollEvent>,
-    }
-```
-The provides an abstraction to provide virtualized IO for functinality such as port IO and memory mapped IO.
-
 ### Jailer:
 The jailer process is responsible for starting a new Firecracker process. The jailer initializes system resources that require higher priviledges and executes into the Firecracker binary which spawns a new Firecracker process which runs in the microVM as an unpriviledged process.
+
+The jailer creates a wrapper around Firecracker which creates another layer of security and isolation.
 
 Once the jailer is invoked, a new Environment is created based on the parsed arguments. See the code [here](https://github.com/firecracker-microvm/firecracker/blob/master/src/jailer/src/main.rs#L367-L377).
 
 ```rust
-    pub struct Env {
-        id: String,
-        chroot_dir: PathBuf,
-        exec_file_path: PathBuf,
-        uid: u32,
-        gid: u32,
-        netns: Option<String>,
-        daemonize: bool,
-        start_time_us: u64,
-        start_time_cpu_us: u64,
-        extra_args: Vec<String>,
-        cgroups: Vec<Cgroup>,
-    }
+pub struct Env {
+    id: String,
+    chroot_dir: PathBuf,
+    exec_file_path: PathBuf,
+    uid: u32,
+    gid: u32,
+    netns: Option<String>,
+    daemonize: bool,
+    start_time_us: u64,
+    start_time_cpu_us: u64,
+    extra_args: Vec<String>,
+    cgroups: Vec<Cgroup>,
+}
 ```
 
-Once a new Env is created, it is run which joins the specified network, initializes the cgroups, and sets up the folder hierarchy and permissions. Once everything is initialized, the Env [executes the specified exec_file](https://github.com/firecracker-microvm/firecracker/blob/main/src/jailer/src/env.rs#L450-L462) passed into the jailer which will create a new Firecracker process. 
+Running an Env joins the specified network (if applicable), initializes the cgroups, and sets up the folder hierarchy and permissions. The chroot contains the Firecracker binary (which spawns the Firecracker process), cgroup control files, and any resources the microVM requires. 
+
+Once everything is initialized, the Env [executes the specified exec_file](https://github.com/firecracker-microvm/firecracker/blob/main/src/jailer/src/env.rs#L450-L462) passed into the jailer which will create a new Firecracker process. 
 
 
 ### Rate limiter: 
 Allows users to control through Firecracker's RESTful API how network and storage resources are shared, even across thousands of microVMs.
 
 The rate limiter uses a [token system](https://github.com/firecracker-microvm/firecracker/blob/dc893ea25fbe730420003bc4d82b4dc2fc7ce296/src/rate_limiter/src/lib.rs#L240) to limit the number of operations per second as well as bandwidth. Each typer of token has a coresponding bucket with a budget that it has been allocated. If any of the buckets run out of budget, the limiter will enter a blocked state. At this point a timer will then notify the user to retry sending the data. 
+
+# How components compose.
+
+### Event Manager:
+
+The event manager provides an abstraction through event manager interface to provide communication between the different modules in the system support virtualized IO. Epoll monitors multiple file descriptors to see if I/O is possible on any of them. [[3]](#References)
+
+The epoll_wait system call returns file descriptors that are ready for IO. This is then stored inside a buffer. A hashmap contains the list of 'subscribers' that are the processes listening to the file descriptor for IO to be performed.  
+
+
+```rust
+pub struct EventManager {
+    epoll: Epoll,
+    subscribers: HashMap<RawFd, Arc<Mutex<dyn Subscriber>>>,
+    ready_events: Vec<EpollEvent>,
+}
+```
+
 
 # Where are the isolation boundaries present?
  
@@ -235,17 +245,25 @@ Firecracker introduces multiple layers of isolation into the system. Each Firecr
 
 For more information on these isolation boundaries, see the image under "Firecracker Security."
 
+# Core abstractions of Firecracker
+
+Because the serverless model provides many challenges when it comes to workload and customer isolation, Firecracker completely replaced QEMU and implemented a custom VMM, device model, and API for managing and configuring multiple microVMs. 
+
+The custom built API abstraction allows the ability to pre-configure microVMs which is a major component that allows Firecracker's extremely fast boot times.
+
+The jailer provides an abstraction for spawning new Firecracker process (or spawning new microVMs). The jailer is also used as a protection barrier between the different VMs.
+
 
 # Firecracker Security
 
 ![Firecracker isolation and security](https://raw.githubusercontent.com/firecracker-microvm/firecracker/main/docs/images/firecracker_threat_containment.png)
 
 ### Security Principles
-**Defense in Depth:** Firecracker utilizes strong VM isolation and containment by having several nested layers of depth, each with different levels of trust and access. Further, Firecracker also contains different barriers that enforce different aspects of security. These layers and barriers combine to give Firecracker strong defense in depth.
+**Defense in Depth:** Firecracker has strong VM isolation and containment by having several nested layers of depth, each with different levels of trust and access. Further, Firecracker also contains different barriers that enforce different aspects of security. These layers and barriers combine to give Firecracker strong defense in depth.
 
 **Minimal Trusted Computing Base (TCB):** Firecracker's codebase is ~50k LoC which is 96% less than QEMU. Furthermore, their minimalist design removes all unecessary resources from the system which makes the Firecracker TCB small.
 
-**Separation of Privelege:** A new firecracker VM is booted up to service each request. These VMs run at a lower privelege level than the EventManager or VMM and only communicate with the VMM through a pre-defined set of requests.
+**Separation of Privelege:** A new firecracker VM is booted up to service each request. These VMs run at a lower privilege level than the EventManager or VMM and only communicate with the VMM through a predefined set of requests.
 
 ### CIA
 **Confidentiality:** Requests are kept confidential to the VM they run in, which is created and destroyed when the request enters and exits the system. Since one firecracker process runs per MicroVM, we have a pretty clear case for isolation.  
@@ -271,18 +289,19 @@ Firecracker limits the kernel's that can be used to boot a firecracker VM to wel
 
 ### Reference Monitor
 
-The device manager, the jailer, vmm (http requests), rate limiter provide orchestration of resources across VMs. 
+The jailer checks whether the microVM has access to certain resources (which provides complete mediation) and validates all paths and the VMs `id` when starting a new microVM. The Event Manager is responsible for validating the notifications and executing the events that occur in the system.
 
+The jailer executes at a higher level of privilege which prevents attacks that will allow a user to spawn multiple new microVMs from another microVM on the system. If an attacker gains access to a microVM, they are only able to execute at that level of privilege and do not have permission to do Denial of Service attacks. This will ensure some level of tamperproofness in the system.
 
 # System performance. Compared to Linux?
 
 ### Boot Speed
-Firecracker performs best when the MicroVMS are pre-configred through the pre-boot controller's API (above)
+Firecracker performs best when the MicroVMS are pre-configred through the pre-boot controller's API (above).
 - Specifically recall the `VmResources.boot_config` struct member
 
 ![Firecracker_Performance_Graph](img/firecracker_boot_times.JPG)
 
-This graph[[1]] shows the boot times for firecracker microVMs (pre-configured (FC-pre) and otherwise (FC)), compared to QEMU and CloudHV
+This graph([1]) shows the boot times for firecracker microVMs (pre-configured (FC-pre) and otherwise (FC)), compared to QEMU and CloudHV
 - FC-pre has significantly better performance than QEMU, on-par with CloudHV in serial and slightly faster in parallel
 - FC is still better than QEMU, but is notably worse than it's pre-configured variant
 
@@ -296,15 +315,38 @@ Firecracker performs around evenly with CloudHV for small and large reads/writes
 - QEMU has much better throughput for reads (the paper[1] acknowledges QEMU has more optimized I/O paths)
 - On large writes, FC and CLoudHV have much higher throughput (why??)
 
+### Comparisons to other isolation implementations. 
+
+Even efficient machanisms such as Docker containers still have significant overhead in the region of hundreds of ms when booting islated computation mechanisms for new clients. This is a result of the lage reliance of the different layersof abstractions and management of namespaces. In comparison, Firecracker does make progress by stripping the number of abstractions required of a microVM. However, there is still inherent cost due to the deploying of new kernel resources for each instance of the microVM. AWS lambda, one of the services that AWS provides built on the Firecracker infrastructure attempts to hide this overhead from the customer by having warm pool of ready microVM to be deployed. 
+In comparison to other isolation implementations such as EdgeOS, this overhead becomes even more apparent. [[4]](#References)
+
+
+| Percentile | Docker | Firecracker | fork()   | EdgeOS   |
+| ---------- | ------ | ----------- | -------- | -------- |
+|     50th   |   521  | 126         | 5.8      | 0.0048   |
+
+EdgeOS manages to imporove upon the startup latency by many orders of magnitude compared to Linux processes while providing strong isolation via the Memory Movement Accelerators(MMA) and a narrow system attack surface. EdgeOS is implemeted in a mictokernel based OS. This speaks to the semantic gap that is present in a system such as Firecracker. One of its goals is high compatability and support for Lambda functions to contain arbitrary Linux binaries and libraries. This is then comes at the expense of system performance when compared to microkernel  based implementations that achieves many of the same goals. 
+
 # Core technologies and how are they composed?
 
 ### Serverless Architecture
 
-### MicroVMs and Warming
+Serverless containers are becoming more and more popular for cloud environments because they offer reduced overhead for operations, automatic scaling, and pay-for-use pricing. 
+
+The serverless model provides distinct economic advantages over other traditional models for cloud environments. Serverless architecture enables more customers to run on the same hardware with minimal overhead without compromising on security or isolation across VMs. 
+
+This is attractive to cloud providers like Amazon because it allows them to scale much quicker than competitors who still use traditional models.
+
+However, despite these advantages, the serverless model comes with many different challenges when it comes to ensuring the isolation of different customers and workloads on the same machine.
 
 
+### MicroVMs
 
-# Optimizations and Fast Paths :lightning:
+Each microVM contains one Firecracker process which is responsible for creating and managing the VM as well as handling device emulation and exiting the VM.
+
+Each Firecracker process is wrapped inside of the Jailer barrier which ensures isolation from other microVMs. Inside of each microVM, the customer is futher isolated from privileged areas of the VM.
+
+# :lightning: Optimizations and Fast Paths
 
 A key optimization to firecracker is the pre-configured boot that results in the fast boot times for FC-pre in the graph above.
 
@@ -312,3 +354,5 @@ A key optimization to firecracker is the pre-configured boot that results in the
 
 [1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf  
 [2] https://aws.amazon.com/lambda/
+[3] https://man7.org/linux/man-pages/man7/epoll.7.html
+[4] https://www.usenix.org/system/files/atc20-ren.pdf
