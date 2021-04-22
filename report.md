@@ -405,13 +405,6 @@ Firecracker performs around evenly with CloudHV for small and large reads/writes
 Even efficient mechanisms such as Docker containers still have significant overhead in the region of hundreds of ms when booting isolated computation mechanisms for new clients. This is a result of the large reliance on the different layers of abstractions and management of namespaces. In comparison, Firecracker does make progress by stripping the number of abstractions required of a microVM. However, there is still inherent cost due to the deploying of new kernel resources for each instance of the microVM. AWS Lambda, one of the services that AWS provides built on the Firecracker infrastructure attempts to hide this overhead from the customer by having a warm pool of ready microVM to be deployed.
 In comparison to other isolation implementations such as EdgeOS, this overhead becomes even more apparent. [[4]](#References)
  
- 
-| Percentile | Docker | Firecracker | fork()   | EdgeOS   |
-| ---------- | ------ | ----------- | -------- | -------- |
-|     50th   |   521  | 126         | 5.8      | 0.0048   |
- 
-EdgeOS manages to improve upon the startup latency by many orders of magnitude compared to Linux processes while providing strong isolation via the Memory Movement Accelerators(MMA) and a narrow system attack surface. EdgeOS is implemented in a microkernel-based OS. This speaks to the semantic gap that is present in a system such as Firecracker. One of its goals is high compatibility and support for Lambda functions to contain arbitrary Linux binaries and libraries. This then comes at the expense of system performance when compared to microkernel-based implementations that achieve many of the same goals.
- 
 # Core technologies and how are they composed?
  
 ### Serverless Architecture
@@ -455,6 +448,18 @@ pub struct BootConfig {
  
 * This struct is returned in the function [build_microvm_for_boot](https://github.com/firecracker-microvm/firecracker/blob/main/src/vmm/src/builder.rs#L286) which sets up the virtual environment to boot the referenced kernel.
  
+# Subjective Opinions
+
+Firecrackers fast boot times, automatic scaling, and strong isolation makes it a powerful choice for cloud environments.
+
+Firecracker seems like a really creative and scalable solution for serverless workloads. I like the way the designers took advantage of the serverless environment they were designing for with the creation of a new microVM for each request. I would imagine the utilization of memory is a bit of a concern because of the constant creation of VMs but on a larger cluster (like the environments firecracker is designed for) it seems like there would be enough resources to go around. The boundaries around user activity is very strong and I didn't realize at first how advantageous being able to destroy and reboot the VM frequently would be to ensure integrity. If a microVM were compromised, the compromise is only relevant for as long as the VM remains active. I do think the relative inability of firecracker to service long term requests limits the applications to serverless architectures and probably would not be good as a general purpose virtualization infrastructure.
+
+| Percentile | Docker | Firecracker | fork()   | EdgeOS   |
+| ---------- | ------ | ----------- | -------- | -------- |
+|     50th   |   521  | 126         | 5.8      | 0.0048   |
+
+EdgeOS manages to imporove upon the startup latency by many orders of magnitude compared to Linux processes while providing strong isolation via the Memory Movement Accelerators(MMA) and a narrow system attack surface. EdgeOS is implemeted in a mictokernel based OS. This speaks to the semantic gap that is present in a system such as Firecracker. One of its goals is high compatability and support for Lambda functions to contain arbitrary Linux binaries and libraries. This is then comes at the expense of system performance when compared to microkernel  based implementations that achieves many of the same goals.
+
 #   :scroll: References
  
 [1] https://www.usenix.org/system/files/nsdi20-paper-agache.pdf 
